@@ -1,0 +1,19 @@
+{
+  "accuracy": 0.6,
+  "best_val_loss": 0.6869195103645325,
+  "confusion_matrix": [
+    [
+      0,
+      2
+    ],
+    [
+      0,
+      3
+    ]
+  ],
+  "epochs": 4,
+  "f1_score": 0.75,
+  "precision": 0.6,
+  "recall": 1.0,
+  "roc_auc": 1.0
+}

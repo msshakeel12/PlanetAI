@@ -1,0 +1,46 @@
+{
+  "cnn_2d_folded": {
+    "accuracy": 0.375,
+    "confusion_matrix": [
+      [
+        0,
+        10
+      ],
+      [
+        0,
+        6
+      ]
+    ],
+    "f1_score": 0.5454545454545454,
+    "precision": 0.375,
+    "recall": 1.0,
+    "roc_auc": 0.5333333333333333
+  },
+  "dataset": {
+    "cnn_model": "cnn_2d_folded",
+    "feature_source": "fallback_stats",
+    "lgb_model": "random_forest_fallback",
+    "mix_ratio_synthetic_target": 0.5,
+    "n_real": 0,
+    "n_synthetic_pool": 80,
+    "n_total": 80,
+    "split": "80/10/10 stratified"
+  },
+  "lightgbm_tsfresh": {
+    "accuracy": 0.875,
+    "confusion_matrix": [
+      [
+        10,
+        0
+      ],
+      [
+        2,
+        4
+      ]
+    ],
+    "f1_score": 0.8,
+    "precision": 1.0,
+    "recall": 0.6666666666666666,
+    "roc_auc": 0.9666666666666668
+  }
+}

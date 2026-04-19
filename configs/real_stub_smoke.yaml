@@ -1,0 +1,48 @@
+download:
+  output: data/raw/kepler_metadata_real_stub_smoke.csv
+  table: cumulative
+  where: null
+  timeout: 60
+  limit: 120
+
+dataset:
+  mode: real_stub
+  label_column: koi_disposition
+  positive_labels:
+    - CONFIRMED
+    - CANDIDATE
+  sequence_length: 256
+  smooth_window: 3
+  phase_fold: false
+  period_column: koi_period
+  epoch_column: koi_time0bk
+  mast_cache_dir: data/raw/mast_cache_real_stub_smoke
+  max_real_targets: null
+  random_seed: 42
+  features_output: data/processed/features_real_stub_smoke.csv
+  sequences_output: data/processed/sequences_real_stub_smoke.npz
+
+baseline:
+  output_dir: data/processed/models_real_stub_smoke
+  test_size: 0.2
+  random_seed: 42
+  label_column: label
+  tune: false
+  tune_iterations: 6
+  tune_cv_folds: 3
+
+cnn:
+  random_seed: 42
+  batch_size: 64
+  learning_rate: 0.001
+  epochs: 4
+  tune: false
+  tune_trials: 2
+  tune_batch_sizes: [32, 64]
+  tune_learning_rates: [0.001]
+  tune_epochs: [4]
+
+tracking:
+  experiment_dir: reports/experiments_real_stub_smoke
+
+figures_dir: reports/figures/real_stub_smoke

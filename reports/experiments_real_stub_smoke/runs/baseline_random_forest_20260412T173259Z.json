@@ -1,0 +1,33 @@
+{
+  "artifacts": {
+    "metrics": "data/processed/models_real_stub_smoke/random_forest_metrics.json",
+    "model": "data/processed/models_real_stub_smoke/random_forest.joblib"
+  },
+  "metrics": {
+    "accuracy": 0.75,
+    "confusion_matrix": [
+      [
+        0,
+        6
+      ],
+      [
+        0,
+        18
+      ]
+    ],
+    "f1_score": 0.8571428571428571,
+    "precision": 0.75,
+    "recall": 1.0,
+    "roc_auc": 0.5231481481481481
+  },
+  "params": {
+    "random_seed": 42,
+    "test_size": 0.2,
+    "tune": false,
+    "tune_cv_folds": 3,
+    "tune_iterations": 6
+  },
+  "run_id": "baseline_random_forest_20260412T173259Z",
+  "stage": "baseline_random_forest",
+  "timestamp_utc": "20260412T173259Z"
+}

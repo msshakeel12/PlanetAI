@@ -1,0 +1,48 @@
+download:
+  output: data/raw/kepler_metadata.csv
+  table: cumulative
+  where: null
+  timeout: 60
+  limit: 1000
+
+dataset:
+  mode: synthetic
+  label_column: koi_disposition
+  positive_labels:
+    - CONFIRMED
+    - CANDIDATE
+  sequence_length: 512
+  smooth_window: 5
+  phase_fold: true
+  period_column: koi_period
+  epoch_column: koi_time0bk
+  mast_cache_dir: data/raw/mast_cache
+  max_real_targets: null
+  random_seed: 42
+  features_output: data/processed/features.csv
+  sequences_output: data/processed/sequences.npz
+
+baseline:
+  output_dir: data/processed/models
+  test_size: 0.2
+  random_seed: 42
+  label_column: label
+  tune: true
+  tune_iterations: 12
+  tune_cv_folds: 5
+
+cnn:
+  random_seed: 42
+  batch_size: 64
+  learning_rate: 0.001
+  epochs: 20
+  tune: true
+  tune_trials: 6
+  tune_batch_sizes: [32, 64, 128]
+  tune_learning_rates: [0.0003, 0.001, 0.003]
+  tune_epochs: [10, 15, 20]
+
+tracking:
+  experiment_dir: reports/experiments
+
+figures_dir: reports/figures

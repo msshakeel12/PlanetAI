@@ -1,0 +1,37 @@
+{
+  "artifacts": {
+    "checkpoint": "data/processed/models_real_stub_smoke/cnn_best.pt",
+    "history": "data/processed/models_real_stub_smoke/cnn_training_history.json",
+    "metrics": "data/processed/models_real_stub_smoke/cnn_metrics.json"
+  },
+  "metrics": {
+    "accuracy": 0.75,
+    "best_val_loss": 0.6091710329055786,
+    "confusion_matrix": [
+      [
+        0,
+        6
+      ],
+      [
+        0,
+        18
+      ]
+    ],
+    "epochs": 4,
+    "f1_score": 0.8571428571428571,
+    "precision": 0.75,
+    "recall": 1.0,
+    "roc_auc": 0.6203703703703703
+  },
+  "params": {
+    "batch_size": 64,
+    "epochs": 4,
+    "learning_rate": 0.001,
+    "random_seed": 42,
+    "tune": false,
+    "tune_trials": 2
+  },
+  "run_id": "cnn_20260412T173301Z",
+  "stage": "cnn",
+  "timestamp_utc": "20260412T173301Z"
+}

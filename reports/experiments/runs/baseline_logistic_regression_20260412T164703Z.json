@@ -1,0 +1,33 @@
+{
+  "artifacts": {
+    "metrics": "data/processed/models/logistic_regression_metrics.json",
+    "model": "data/processed/models/logistic_regression.joblib"
+  },
+  "metrics": {
+    "accuracy": 0.715,
+    "confusion_matrix": [
+      [
+        31,
+        36
+      ],
+      [
+        21,
+        112
+      ]
+    ],
+    "f1_score": 0.797153024911032,
+    "precision": 0.7567567567567568,
+    "recall": 0.8421052631578947,
+    "roc_auc": 0.7776904948939513
+  },
+  "params": {
+    "random_seed": 42,
+    "test_size": 0.2,
+    "tune": true,
+    "tune_cv_folds": 5,
+    "tune_iterations": 12
+  },
+  "run_id": "baseline_logistic_regression_20260412T164703Z",
+  "stage": "baseline_logistic_regression",
+  "timestamp_utc": "20260412T164703Z"
+}
