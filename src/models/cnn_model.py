@@ -39,16 +39,20 @@ class TransitCNN(nn.Module):
             nn.Conv1d(32, 64, kernel_size=5, padding=2),
             nn.BatchNorm1d(64),
             nn.ReLU(),
+            nn.Dropout(p=0.15),
+            nn.Conv1d(64, 96, kernel_size=3, padding=1),
+            nn.BatchNorm1d(96),
+            nn.ReLU(),
             nn.AdaptiveAvgPool1d(16),
         )
 
-        flattened_size = 64 * 16
+        flattened_size = 96 * 16
         self.classifier = nn.Sequential(
             nn.Flatten(),
-            nn.Linear(flattened_size, 64),
+            nn.Linear(flattened_size, 96),
             nn.ReLU(),
             nn.Dropout(p=0.3),
-            nn.Linear(64, 1),
+            nn.Linear(96, 1),
         )
 
         self.input_length = input_length

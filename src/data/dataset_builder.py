@@ -61,6 +61,93 @@ def derive_binary_labels(
     return labels
 
 
+def derive_earth_sized_labels(
+    metadata: pd.DataFrame,
+    label_column: str,
+    earth_size_max_radius: float,
+    include_candidates_as_positive: bool = False,
+) -> tuple[np.ndarray, pd.DataFrame]:
+    """Derive labels for Earth-sized planet detection.
+
+    Args:
+        metadata: Metadata dataframe from Exoplanet Archive.
+        label_column: Disposition label column.
+        earth_size_max_radius: Maximum ``koi_prad`` for Earth-sized positives.
+        include_candidates_as_positive: Whether Earth-sized candidates are
+            treated as positives.
+
+    Returns:
+        Tuple ``(labels, filtered_metadata)`` where filtered metadata keeps only
+        rows participating in the Earth-sized binary task.
+
+    Raises:
+        ValueError: If required columns are missing.
+    """
+    if label_column not in metadata.columns:
+        raise ValueError(f"Missing label column: {label_column}")
+    if "koi_prad" not in metadata.columns:
+        raise ValueError("Earth-sized task requires 'koi_prad' column")
+
+    dispositions = metadata[label_column].fillna("UNKNOWN").astype(str).str.upper()
+    planet_radius = pd.to_numeric(metadata["koi_prad"], errors="coerce")
+
+    is_confirmed = dispositions == "CONFIRMED"
+    is_candidate = dispositions == "CANDIDATE"
+    is_false_positive = dispositions == "FALSE POSITIVE"
+    is_earth_sized = planet_radius.notna() & (planet_radius <= float(earth_size_max_radius))
+
+    positive_mask = is_confirmed & is_earth_sized
+    if include_candidates_as_positive:
+        positive_mask = positive_mask | (is_candidate & is_earth_sized)
+
+    negative_mask = is_false_positive | ((is_confirmed | is_candidate) & (~is_earth_sized))
+    keep_mask = positive_mask | negative_mask
+
+    filtered_metadata = metadata.loc[keep_mask].reset_index(drop=True)
+    labels = positive_mask.loc[keep_mask].astype(int).to_numpy()
+    return labels, filtered_metadata
+
+
+def derive_task_labels(
+    metadata: pd.DataFrame,
+    task_mode: str,
+    label_column: str,
+    positive_labels: Iterable[str],
+    earth_size_max_radius: float,
+    include_candidates_as_positive: bool,
+) -> tuple[np.ndarray, pd.DataFrame]:
+    """Derive labels for configured task mode.
+
+    Args:
+        metadata: Input metadata dataframe.
+        task_mode: Labeling strategy name.
+        label_column: Disposition/label column.
+        positive_labels: Positive labels for disposition mode.
+        earth_size_max_radius: Radius threshold for Earth-sized mode.
+        include_candidates_as_positive: Include Earth-sized candidates as
+            positives in Earth-sized mode.
+
+    Returns:
+        Tuple ``(labels, filtered_metadata)``.
+    """
+    mode = task_mode.strip().lower()
+    if mode == "disposition_binary":
+        labels = derive_binary_labels(
+            metadata=metadata,
+            label_column=label_column,
+            positive_labels=positive_labels,
+        )
+        return labels, metadata.reset_index(drop=True)
+    if mode == "earth_sized_binary":
+        return derive_earth_sized_labels(
+            metadata=metadata,
+            label_column=label_column,
+            earth_size_max_radius=earth_size_max_radius,
+            include_candidates_as_positive=include_candidates_as_positive,
+        )
+    raise ValueError("task_mode must be one of: disposition_binary, earth_sized_binary")
+
+
 def _simulate_transit_curve(label: int, length: int, rng: np.random.Generator) -> tuple[np.ndarray, np.ndarray]:
     """Generate a toy transit-like curve for pipeline bootstrapping.
 
@@ -105,7 +192,7 @@ def build_synthetic_dataset(
     apply_phase_fold: bool,
     period_column: str,
     epoch_column: str,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """Build a fully synthetic dataset from metadata labels.
 
     Args:
@@ -119,7 +206,7 @@ def build_synthetic_dataset(
         epoch_column: Metadata column containing epoch estimates.
 
     Returns:
-        Tuple ``(times, fluxes, labels)`` as batched numpy arrays.
+        Tuple ``(times, fluxes, labels, groups)`` as batched numpy arrays.
     """
     rng = np.random.default_rng(random_seed)
 
@@ -149,7 +236,10 @@ def build_synthetic_dataset(
         time_batch.append(proc_time)
         flux_batch.append(proc_flux)
 
-    return np.asarray(time_batch), np.asarray(flux_batch), labels.astype(int)
+    groups = (
+        metadata["kepid"].to_numpy() if "kepid" in metadata.columns else np.arange(len(labels), dtype=np.int64)
+    )
+    return np.asarray(time_batch), np.asarray(flux_batch), labels.astype(int), np.asarray(groups)
 
 
 def build_real_dataset(
@@ -163,7 +253,7 @@ def build_real_dataset(
     epoch_column: str,
     mast_cache_dir: Path,
     max_targets: int | None,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """Build dataset from real Kepler light curves fetched from MAST.
 
     Args:
@@ -179,7 +269,7 @@ def build_real_dataset(
         max_targets: Optional cap on number of rows processed.
 
     Returns:
-        Tuple ``(times, fluxes, labels)`` for successfully ingested targets.
+        Tuple ``(times, fluxes, labels, groups)`` for successfully ingested targets.
 
     Raises:
         RuntimeError: If no targets are ingested successfully.
@@ -193,6 +283,7 @@ def build_real_dataset(
     times_out: list[np.ndarray] = []
     fluxes_out: list[np.ndarray] = []
     labels_out: list[int] = []
+    groups_out: list[int] = []
 
     # Cap processing to support bounded-cost smoke runs against remote services.
     cap = len(metadata) if max_targets is None else min(len(metadata), max_targets)
@@ -229,6 +320,7 @@ def build_real_dataset(
             times_out.append(proc_time)
             fluxes_out.append(proc_flux)
             labels_out.append(int(labels[idx]))
+            groups_out.append(kepid)
         except Exception as exc:
             print(f"Skipping KIC {kepid_raw} due to ingestion error: {exc}")
 
@@ -238,7 +330,12 @@ def build_real_dataset(
             "Verify network access, metadata KEPID values, and optional lightkurve dependency."
         )
 
-    return np.asarray(times_out), np.asarray(fluxes_out), np.asarray(labels_out, dtype=int)
+    return (
+        np.asarray(times_out),
+        np.asarray(fluxes_out),
+        np.asarray(labels_out, dtype=int),
+        np.asarray(groups_out, dtype=np.int64),
+    )
 
 
 def build_real_stub_dataset(
@@ -246,7 +343,7 @@ def build_real_stub_dataset(
     labels: np.ndarray,
     sequence_length: int,
     random_seed: int,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """Generate deterministic placeholder arrays for non-MAST workflows.
 
     Args:
@@ -256,7 +353,7 @@ def build_real_stub_dataset(
         random_seed: Seed controlling placeholder values.
 
     Returns:
-        Tuple ``(times, fluxes, labels)`` with synthetic placeholder fluxes.
+        Tuple ``(times, fluxes, labels, groups)`` with synthetic placeholder fluxes.
 
     Notes:
         TODO: Keep this mode as an explicit bridge until all environments have
@@ -266,7 +363,10 @@ def build_real_stub_dataset(
     n_samples = len(metadata)
     times = np.tile(np.linspace(0.0, 30.0, sequence_length), (n_samples, 1))
     fluxes = rng.normal(0.0, 1.0, size=(n_samples, sequence_length))
-    return times, fluxes, labels.astype(int)
+    groups = (
+        metadata["kepid"].to_numpy() if "kepid" in metadata.columns else np.arange(n_samples, dtype=np.int64)
+    )
+    return times, fluxes, labels.astype(int), np.asarray(groups)
 
 
 def run_dataset_build(
@@ -284,6 +384,9 @@ def run_dataset_build(
     epoch_column: str,
     mast_cache_dir: Path,
     max_real_targets: int | None,
+    task_mode: str = "disposition_binary",
+    earth_size_max_radius: float = 1.5,
+    include_candidates_as_positive: bool = False,
 ) -> tuple[Path, Path]:
     """Build feature and sequence artifacts from metadata.
 
@@ -294,6 +397,10 @@ def run_dataset_build(
         mode: One of ``synthetic``, ``real``, or ``real_stub``.
         label_column: Metadata column used for label derivation.
         positive_labels: Positive label values.
+        task_mode: Labeling task mode.
+        earth_size_max_radius: Radius threshold for Earth-sized task mode.
+        include_candidates_as_positive: Include candidates in positive class for
+            Earth-sized task mode.
         sequence_length: Target sequence length.
         random_seed: RNG seed.
         smooth_window: Optional smoothing window.
@@ -313,12 +420,18 @@ def run_dataset_build(
     # ------------------------------ Load metadata -----------------------------
     metadata = pd.read_csv(metadata_path)
     metadata.columns = [c.lower() for c in metadata.columns]
-
-    labels = derive_binary_labels(metadata=metadata, label_column=label_column.lower(), positive_labels=positive_labels)
+    labels, metadata = derive_task_labels(
+        metadata=metadata,
+        task_mode=task_mode,
+        label_column=label_column.lower(),
+        positive_labels=positive_labels,
+        earth_size_max_radius=earth_size_max_radius,
+        include_candidates_as_positive=include_candidates_as_positive,
+    )
 
     # ------------------------------- Build data -------------------------------
     if mode == "synthetic":
-        times, fluxes, labels_out = build_synthetic_dataset(
+        times, fluxes, labels_out, groups_out = build_synthetic_dataset(
             metadata=metadata,
             labels=labels,
             sequence_length=sequence_length,
@@ -329,7 +442,7 @@ def run_dataset_build(
             epoch_column=epoch_column,
         )
     elif mode == "real":
-        times, fluxes, labels_out = build_real_dataset(
+        times, fluxes, labels_out, groups_out = build_real_dataset(
             metadata=metadata,
             labels=labels,
             sequence_length=sequence_length,
@@ -342,7 +455,7 @@ def run_dataset_build(
             max_targets=max_real_targets,
         )
     elif mode == "real_stub":
-        times, fluxes, labels_out = build_real_stub_dataset(
+        times, fluxes, labels_out, groups_out = build_real_stub_dataset(
             metadata=metadata,
             labels=labels,
             sequence_length=sequence_length,
@@ -359,7 +472,7 @@ def run_dataset_build(
     features_path.parent.mkdir(parents=True, exist_ok=True)
     sequences_path.parent.mkdir(parents=True, exist_ok=True)
     feature_df.to_csv(features_path, index=False)
-    np.savez_compressed(sequences_path, times=times, sequences=fluxes, labels=labels_out)
+    np.savez_compressed(sequences_path, times=times, sequences=fluxes, labels=labels_out, groups=groups_out)
 
     return features_path, sequences_path
 
@@ -395,6 +508,24 @@ def build_parser() -> argparse.ArgumentParser:
         nargs="+",
         default=["CONFIRMED", "CANDIDATE"],
         help="Labels treated as positive class.",
+    )
+    parser.add_argument(
+        "--task-mode",
+        type=str,
+        default="disposition_binary",
+        choices=["disposition_binary", "earth_sized_binary"],
+        help="Labeling task mode.",
+    )
+    parser.add_argument(
+        "--earth-size-max-radius",
+        type=float,
+        default=1.5,
+        help="Maximum radius (Earth radii) for Earth-sized positives.",
+    )
+    parser.add_argument(
+        "--include-candidates-as-positive",
+        action="store_true",
+        help="Treat Earth-sized CANDIDATE rows as positive in Earth-sized mode.",
     )
     parser.add_argument(
         "--sequence-length",
@@ -473,6 +604,9 @@ def main() -> None:
         mode=args.mode,
         label_column=args.label_column,
         positive_labels=args.positive_labels,
+        task_mode=args.task_mode,
+        earth_size_max_radius=args.earth_size_max_radius,
+        include_candidates_as_positive=args.include_candidates_as_positive,
         sequence_length=args.sequence_length,
         random_seed=args.random_seed,
         smooth_window=args.smooth_window,

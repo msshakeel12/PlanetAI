@@ -8,6 +8,9 @@ download:
 dataset:
   mode: synthetic
   label_column: koi_disposition
+  task_mode: disposition_binary
+  earth_size_max_radius: 1.5
+  include_candidates_as_positive: false
   positive_labels:
     - CONFIRMED
     - CANDIDATE
@@ -36,6 +39,7 @@ cnn:
   batch_size: 64
   learning_rate: 0.001
   epochs: 20
+  threshold_metric: balanced_accuracy
   tune: true
   tune_trials: 6
   tune_batch_sizes: [32, 64, 128]

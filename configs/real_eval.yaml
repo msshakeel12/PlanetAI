@@ -3,21 +3,23 @@ download:
   table: cumulative
   where: null
   timeout: 60
-  limit: 200
+  limit: 3000
 
 dataset:
   mode: real
   label_column: koi_disposition
+  task_mode: earth_sized_binary
+  earth_size_max_radius: 1.5
+  include_candidates_as_positive: false
   positive_labels:
     - CONFIRMED
-    - CANDIDATE
   sequence_length: 256
   smooth_window: 3
   phase_fold: true
   period_column: koi_period
   epoch_column: koi_time0bk
   mast_cache_dir: data/raw/mast_cache_real_eval
-  max_real_targets: 25
+  max_real_targets: null
   random_seed: 42
   features_output: data/processed/features_real_eval.csv
   sequences_output: data/processed/sequences_real_eval.npz
@@ -35,12 +37,13 @@ cnn:
   random_seed: 42
   batch_size: 32
   learning_rate: 0.001
-  epochs: 4
+  epochs: 20
+  threshold_metric: balanced_accuracy
   tune: false
   tune_trials: 2
   tune_batch_sizes: [32]
   tune_learning_rates: [0.001]
-  tune_epochs: [4]
+  tune_epochs: [20]
 
 tracking:
   experiment_dir: reports/experiments_real_eval

@@ -93,6 +93,9 @@ def main() -> None:
         epoch_column=dataset_cfg.get("epoch_column", "koi_time0bk"),
         mast_cache_dir=Path(dataset_cfg.get("mast_cache_dir", RAW_DATA_DIR / "mast_cache")),
         max_real_targets=dataset_cfg.get("max_real_targets"),
+        task_mode=dataset_cfg.get("task_mode", "disposition_binary"),
+        earth_size_max_radius=float(dataset_cfg.get("earth_size_max_radius", 1.5)),
+        include_candidates_as_positive=bool(dataset_cfg.get("include_candidates_as_positive", False)),
     )
 
     # ----------------------- Stage 3: baseline models -------------------------
@@ -125,6 +128,9 @@ def main() -> None:
             "learning_rate": list(cnn_cfg.get("tune_learning_rates", [0.0003, 0.001, 0.003])),
             "epochs": list(cnn_cfg.get("tune_epochs", [10, 15, 20])),
         },
+        task_mode=dataset_cfg.get("task_mode", "disposition_binary"),
+        earth_size_max_radius=float(dataset_cfg.get("earth_size_max_radius", 1.5)),
+        threshold_metric=cnn_cfg.get("threshold_metric", "balanced_accuracy"),
         tracker=tracker,
     )
 
