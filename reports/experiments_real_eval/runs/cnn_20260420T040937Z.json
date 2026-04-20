@@ -1,0 +1,82 @@
+{
+  "artifacts": {
+    "checkpoint": "data/processed/models_real_eval/cnn_best.pt",
+    "history": "data/processed/models_real_eval/cnn_training_history.json",
+    "metrics": "data/processed/models_real_eval/cnn_metrics.json"
+  },
+  "metrics": {
+    "accuracy": 0.65,
+    "average_precision": 0.7757262448351481,
+    "balanced_accuracy": 0.5329153605015674,
+    "best_val_loss": 0.38099935054779055,
+    "class_counts": {
+      "test": {
+        "negative": 11,
+        "positive": 29
+      },
+      "train": {
+        "negative": 33,
+        "positive": 86
+      },
+      "val": {
+        "negative": 11,
+        "positive": 29
+      }
+    },
+    "confusion_matrix": [
+      [
+        3,
+        8
+      ],
+      [
+        6,
+        23
+      ]
+    ],
+    "confusionmatrix": [
+      [
+        3,
+        8
+      ],
+      [
+        6,
+        23
+      ]
+    ],
+    "earth_size_max_radius": 1.5,
+    "epochs": 20,
+    "f1_score": 0.7666666666666667,
+    "f1score": 0.7666666666666667,
+    "group_counts": {
+      "test": 30,
+      "train": 85,
+      "val": 30
+    },
+    "precision": 0.7419354838709677,
+    "recall": 0.7931034482758621,
+    "roc_auc": 0.6081504702194357,
+    "rocauc": 0.6081504702194357,
+    "specificity": 0.2727272727272727,
+    "support_negative": 11,
+    "support_positive": 29,
+    "task_mode": "disposition_binary",
+    "threshold_metric": "balanced_accuracy",
+    "threshold_metric_value": 0.6755485893416928,
+    "threshold_used": 0.2,
+    "train_pos_weight": 0.38372093023255816
+  },
+  "params": {
+    "batch_size": 32,
+    "earth_size_max_radius": 1.5,
+    "epochs": 20,
+    "learning_rate": 0.001,
+    "random_seed": 42,
+    "task_mode": "disposition_binary",
+    "threshold_metric": "balanced_accuracy",
+    "tune": false,
+    "tune_trials": 2
+  },
+  "run_id": "cnn_20260420T040937Z",
+  "stage": "cnn",
+  "timestamp_utc": "20260420T040937Z"
+}

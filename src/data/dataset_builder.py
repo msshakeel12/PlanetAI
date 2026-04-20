@@ -23,7 +23,16 @@ import pandas as pd
 
 from src.data.mast_kepler import download_kepler_light_curve
 from src.features.feature_engineering import build_feature_table
-from src.features.preprocessing import phase_fold_light_curve, preprocess_light_curve, resample_phase_curve
+from src.features.preprocessing import (
+    build_aux_features,
+    build_global_view,
+    build_local_view,
+    build_odd_even_view,
+    build_secondary_view,
+    phase_fold_light_curve,
+    preprocess_light_curve,
+    resample_phase_curve,
+)
 from src.utils.paths import PROCESSED_DATA_DIR, RAW_DATA_DIR, ensure_project_directories
 
 
@@ -255,7 +264,14 @@ def build_real_dataset(
     max_targets: int | None,
     mast_search_timeout_seconds: float | None = None,
     mast_download_timeout_seconds: float | None = None,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    return_kept_indices: bool = False,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray] | tuple[
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+]:
     """Build dataset from real Kepler light curves fetched from MAST.
 
     Args:
@@ -288,6 +304,7 @@ def build_real_dataset(
     fluxes_out: list[np.ndarray] = []
     labels_out: list[int] = []
     groups_out: list[int] = []
+    kept_indices: list[int] = []
     skipped_missing_kepid = 0
     skipped_errors = 0
 
@@ -336,6 +353,7 @@ def build_real_dataset(
             fluxes_out.append(proc_flux)
             labels_out.append(int(labels[idx]))
             groups_out.append(kepid)
+            kept_indices.append(idx)
             print(f"{progress} OK KIC {kepid} ({proc_flux.size} points)")
         except Exception as exc:
             skipped_errors += 1
@@ -353,11 +371,102 @@ def build_real_dataset(
             "Verify network access, metadata KEPID values, and optional lightkurve dependency."
         )
 
-    return (
+    base_result = (
         np.asarray(times_out),
         np.asarray(fluxes_out),
         np.asarray(labels_out, dtype=int),
         np.asarray(groups_out, dtype=np.int64),
+    )
+    if return_kept_indices:
+        return (*base_result, np.asarray(kept_indices, dtype=np.int64))
+    return base_result
+
+
+def _safe_numeric_value(row: pd.Series, key: str, fallback: float = 0.0) -> float:
+    """Read numeric metadata value with deterministic fallback."""
+    value = pd.to_numeric(row.get(key), errors="coerce")
+    if pd.isna(value):
+        return float(fallback)
+    value_f = float(value)
+    if not np.isfinite(value_f):
+        return float(fallback)
+    return value_f
+
+
+def _build_multiview_arrays(
+    times: np.ndarray,
+    fluxes: np.ndarray,
+    metadata: pd.DataFrame,
+    period_column: str,
+    epoch_column: str,
+    global_view_length: int,
+    local_view_length: int,
+    odd_even_view_length: int,
+    secondary_view_length: int,
+    enable_odd_even_view: bool,
+    enable_secondary_view: bool,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray | None, np.ndarray | None]:
+    """Build global/local/aux arrays from preprocessed curves and metadata."""
+    global_views: list[np.ndarray] = []
+    local_views: list[np.ndarray] = []
+    aux_features: list[np.ndarray] = []
+    odd_even_views: list[np.ndarray] = []
+    secondary_views: list[np.ndarray] = []
+
+    n_samples = int(times.shape[0])
+    for idx in range(n_samples):
+        row = metadata.iloc[idx]
+        period = _safe_numeric_value(row, period_column, fallback=0.0)
+        epoch = _safe_numeric_value(row, epoch_column, fallback=0.0)
+        global_view = build_global_view(
+            time=times[idx],
+            flux=fluxes[idx],
+            period=period,
+            epoch=epoch,
+            target_length=global_view_length,
+        )
+        local_view = build_local_view(
+            time=times[idx],
+            flux=fluxes[idx],
+            period=period,
+            epoch=epoch,
+            target_length=local_view_length,
+        )
+        aux = build_aux_features(row)
+
+        if enable_odd_even_view:
+            odd_even = build_odd_even_view(
+                time=times[idx],
+                flux=fluxes[idx],
+                period=period,
+                epoch=epoch,
+                target_length=odd_even_view_length,
+            )
+            odd_even_views.append(np.nan_to_num(odd_even, nan=0.0, posinf=0.0, neginf=0.0).astype(np.float32))
+
+        if enable_secondary_view:
+            secondary = build_secondary_view(
+                time=times[idx],
+                flux=fluxes[idx],
+                period=period,
+                epoch=epoch,
+                target_length=secondary_view_length,
+            )
+            secondary_views.append(np.nan_to_num(secondary, nan=0.0, posinf=0.0, neginf=0.0).astype(np.float32))
+
+        global_views.append(np.nan_to_num(global_view, nan=0.0, posinf=0.0, neginf=0.0).astype(np.float32))
+        local_views.append(np.nan_to_num(local_view, nan=0.0, posinf=0.0, neginf=0.0).astype(np.float32))
+        aux_features.append(np.nan_to_num(aux, nan=0.0, posinf=0.0, neginf=0.0).astype(np.float32))
+
+    odd_even_out = np.asarray(odd_even_views, dtype=np.float32) if enable_odd_even_view else None
+    secondary_out = np.asarray(secondary_views, dtype=np.float32) if enable_secondary_view else None
+
+    return (
+        np.asarray(global_views, dtype=np.float32),
+        np.asarray(local_views, dtype=np.float32),
+        np.asarray(aux_features, dtype=np.float32),
+        odd_even_out,
+        secondary_out,
     )
 
 
@@ -412,6 +521,12 @@ def run_dataset_build(
     include_candidates_as_positive: bool = False,
     mast_search_timeout_seconds: float | None = None,
     mast_download_timeout_seconds: float | None = None,
+    global_view_length: int = 1024,
+    local_view_length: int = 256,
+    odd_even_view_length: int = 256,
+    secondary_view_length: int = 256,
+    enable_odd_even_view: bool = True,
+    enable_secondary_view: bool = True,
 ) -> tuple[Path, Path]:
     """Build feature and sequence artifacts from metadata.
 
@@ -436,6 +551,12 @@ def run_dataset_build(
         max_real_targets: Optional ingestion cap in real mode.
         mast_search_timeout_seconds: Optional timeout for MAST search stage.
         mast_download_timeout_seconds: Optional timeout for MAST download stage.
+        global_view_length: Fixed length for global folded view.
+        local_view_length: Fixed length for local transit-centered view.
+        odd_even_view_length: Fixed length for odd/even diagnostic view bins.
+        secondary_view_length: Fixed length for secondary-eclipse view.
+        enable_odd_even_view: Whether to save pass-2 odd/even diagnostic views.
+        enable_secondary_view: Whether to save pass-2 secondary diagnostic views.
 
     Returns:
         Tuple containing paths to the saved feature CSV and sequence NPZ.
@@ -468,8 +589,9 @@ def run_dataset_build(
             period_column=period_column,
             epoch_column=epoch_column,
         )
+        metadata_out = metadata.reset_index(drop=True)
     elif mode == "real":
-        times, fluxes, labels_out, groups_out = build_real_dataset(
+        times, fluxes, labels_out, groups_out, kept_indices = build_real_dataset(
             metadata=metadata,
             labels=labels,
             sequence_length=sequence_length,
@@ -482,7 +604,9 @@ def run_dataset_build(
             max_targets=max_real_targets,
             mast_search_timeout_seconds=mast_search_timeout_seconds,
             mast_download_timeout_seconds=mast_download_timeout_seconds,
+            return_kept_indices=True,
         )
+        metadata_out = metadata.iloc[kept_indices].reset_index(drop=True)
     elif mode == "real_stub":
         times, fluxes, labels_out, groups_out = build_real_stub_dataset(
             metadata=metadata,
@@ -490,8 +614,23 @@ def run_dataset_build(
             sequence_length=sequence_length,
             random_seed=random_seed,
         )
+        metadata_out = metadata.reset_index(drop=True)
     else:
         raise ValueError("mode must be one of: synthetic, real, real_stub")
+
+    global_views, local_views, aux_features, odd_even_views, secondary_views = _build_multiview_arrays(
+        times=times,
+        fluxes=fluxes,
+        metadata=metadata_out,
+        period_column=period_column,
+        epoch_column=epoch_column,
+        global_view_length=global_view_length,
+        local_view_length=local_view_length,
+        odd_even_view_length=odd_even_view_length,
+        secondary_view_length=secondary_view_length,
+        enable_odd_even_view=enable_odd_even_view,
+        enable_secondary_view=enable_secondary_view,
+    )
 
     # -------------------------- Feature engineering ---------------------------
     feature_df = build_feature_table(times=times, fluxes=fluxes)
@@ -501,7 +640,20 @@ def run_dataset_build(
     features_path.parent.mkdir(parents=True, exist_ok=True)
     sequences_path.parent.mkdir(parents=True, exist_ok=True)
     feature_df.to_csv(features_path, index=False)
-    np.savez_compressed(sequences_path, times=times, sequences=fluxes, labels=labels_out, groups=groups_out)
+    save_payload: dict[str, np.ndarray] = {
+        "times": np.nan_to_num(times, nan=0.0, posinf=0.0, neginf=0.0).astype(np.float32),
+        "sequences": np.nan_to_num(fluxes, nan=0.0, posinf=0.0, neginf=0.0).astype(np.float32),
+        "labels": labels_out,
+        "groups": groups_out,
+        "global_views": global_views,
+        "local_views": local_views,
+        "aux_features": aux_features,
+    }
+    if odd_even_views is not None:
+        save_payload["odd_even_views"] = odd_even_views
+    if secondary_views is not None:
+        save_payload["secondary_views"] = secondary_views
+    np.savez_compressed(sequences_path, **save_payload)
 
     return features_path, sequences_path
 
@@ -561,6 +713,42 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         default=512,
         help="Fixed sequence length after preprocessing.",
+    )
+    parser.add_argument(
+        "--global-view-length",
+        type=int,
+        default=1024,
+        help="Fixed length for the global phase-folded view.",
+    )
+    parser.add_argument(
+        "--local-view-length",
+        type=int,
+        default=256,
+        help="Fixed length for the local transit-centered view.",
+    )
+    parser.add_argument(
+        "--secondary-view-length",
+        type=int,
+        default=128,
+        help="Fixed length for the secondary-eclipse view.",
+    )
+    parser.add_argument(
+        "--odd-even-view-length",
+        type=int,
+        default=256,
+        help="Fixed length for odd/even diagnostic views.",
+    )
+    parser.add_argument(
+        "--enable-odd-even-view",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Save pass-2 odd/even diagnostic views in the sequence NPZ.",
+    )
+    parser.add_argument(
+        "--enable-secondary-view",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Save pass-2 secondary diagnostic views in the sequence NPZ.",
     )
     parser.add_argument(
         "--smooth-window",
@@ -658,6 +846,12 @@ def main() -> None:
         max_real_targets=args.max_real_targets,
         mast_search_timeout_seconds=args.mast_search_timeout_seconds,
         mast_download_timeout_seconds=args.mast_download_timeout_seconds,
+        global_view_length=args.global_view_length,
+        local_view_length=args.local_view_length,
+        odd_even_view_length=args.odd_even_view_length,
+        secondary_view_length=args.secondary_view_length,
+        enable_odd_even_view=args.enable_odd_even_view,
+        enable_secondary_view=args.enable_secondary_view,
     )
     print(f"Saved feature table to {features_path}")
     print(f"Saved sequence arrays to {sequences_path}")

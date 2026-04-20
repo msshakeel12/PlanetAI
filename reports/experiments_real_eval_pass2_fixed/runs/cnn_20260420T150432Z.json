@@ -1,0 +1,112 @@
+{
+  "artifacts": {
+    "checkpoint": "data/processed/models/cnn_best.pt",
+    "history": "data/processed/models/cnn_training_history.json",
+    "metrics": "data/processed/models/cnn_metrics.json"
+  },
+  "metrics": {
+    "accuracy": 0.705,
+    "aux_norm": {
+      "mean": [
+        244.28195190429688,
+        4.636690616607666,
+        4995.9580078125,
+        22.69098663330078,
+        5473.509765625
+      ],
+      "std": [
+        5302.28662109375,
+        4.294351577758789,
+        11395.6845703125,
+        125.15599060058594,
+        1033.343505859375
+      ]
+    },
+    "average_precision": 0.8801657148366819,
+    "balanced_accuracy": 0.730052743799798,
+    "best_val_loss": 0.39500909686088564,
+    "branches": {
+      "aux_enabled": true,
+      "fusion_hidden_dim": 96,
+      "odd_even_enabled": true,
+      "secondary_enabled": true
+    },
+    "class_counts": {
+      "test": {
+        "negative": 67,
+        "positive": 133
+      },
+      "train": {
+        "negative": 202,
+        "positive": 398
+      },
+      "val": {
+        "negative": 68,
+        "positive": 132
+      }
+    },
+    "confusion_matrix": [
+      [
+        54,
+        13
+      ],
+      [
+        46,
+        87
+      ]
+    ],
+    "confusionmatrix": [
+      [
+        54,
+        13
+      ],
+      [
+        46,
+        87
+      ]
+    ],
+    "earth_size_max_radius": 1.5,
+    "epochs": 15,
+    "f1_score": 0.7467811158798283,
+    "f1score": 0.7467811158798283,
+    "group_counts": {
+      "test": 153,
+      "train": 461,
+      "val": 153
+    },
+    "model_mode": "multiview",
+    "multiview_arrays_available": true,
+    "precision": 0.87,
+    "recall": 0.6541353383458647,
+    "roc_auc": 0.8256087981146897,
+    "rocauc": 0.8256087981146897,
+    "specificity": 0.8059701492537313,
+    "support_negative": 67,
+    "support_positive": 133,
+    "task_mode": "disposition_binary",
+    "threshold_metric": "balanced_accuracy",
+    "threshold_metric_value": 0.7974598930481284,
+    "threshold_used": 0.7000000000000001,
+    "train_pos_weight": 0.507537688442211
+  },
+  "params": {
+    "batch_size": 32,
+    "disable_aux_features": false,
+    "earth_size_max_radius": 1.5,
+    "effective_model_mode": "multiview",
+    "epochs": 15,
+    "fusion_hidden_dim": 96,
+    "learning_rate": 0.003,
+    "model_mode": "auto",
+    "random_seed": 42,
+    "task_mode": "disposition_binary",
+    "threshold_metric": "balanced_accuracy",
+    "tune": true,
+    "tune_trials": 6,
+    "use_odd_even_branch": true,
+    "use_secondary_branch": true
+  },
+  "run_id": "cnn_20260420T150432Z",
+  "stage": "cnn",
+  "timestamp_utc": "20260420T150432Z"
+}

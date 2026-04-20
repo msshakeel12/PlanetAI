@@ -39,6 +39,18 @@ def build_parser() -> argparse.ArgumentParser:
         default=Path("configs/default.yaml"),
         help="YAML config file.",
     )
+    parser.add_argument(
+        "--experiment-name",
+        type=str,
+        default=None,
+        help="Optional experiment suffix used for tracking directory naming.",
+    )
+    parser.add_argument(
+        "--max-real-targets",
+        type=int,
+        default=None,
+        help="Optional override for dataset.max_real_targets.",
+    )
     return parser
 
 
@@ -66,6 +78,8 @@ def main() -> None:
     model_dir = Path(baseline_cfg.get("output_dir", PROCESSED_DATA_DIR / "models"))
     figures_dir = Path(cfg.get("figures_dir", FIGURES_DIR))
     tracker_dir_value = tracking_cfg.get("experiment_dir")
+    if args.experiment_name:
+        tracker_dir_value = str(Path("reports") / f"experiments_{args.experiment_name}")
     tracker = ExperimentTracker(Path(tracker_dir_value)) if tracker_dir_value else None
 
     # ---------------------------- Stage 1: ingest -----------------------------
@@ -91,13 +105,14 @@ def main() -> None:
         apply_phase_fold=bool(dataset_cfg.get("phase_fold", False)),
         period_column=dataset_cfg.get("period_column", "koi_period"),
         epoch_column=dataset_cfg.get("epoch_column", "koi_time0bk"),
+        global_view_length=int(dataset_cfg.get("global_view_length", 1024)),
+        local_view_length=int(dataset_cfg.get("local_view_length", 256)),
+        odd_even_view_length=int(dataset_cfg.get("odd_even_view_length", 256)),
+        secondary_view_length=int(dataset_cfg.get("secondary_view_length", 256)),
+        enable_odd_even_view=bool(dataset_cfg.get("enable_odd_even_view", True)),
+        enable_secondary_view=bool(dataset_cfg.get("enable_secondary_view", True)),
         mast_cache_dir=Path(dataset_cfg.get("mast_cache_dir", RAW_DATA_DIR / "mast_cache")),
-        max_real_targets=dataset_cfg.get("max_real_targets"),
-        task_mode=dataset_cfg.get("task_mode", "disposition_binary"),
-        earth_size_max_radius=float(dataset_cfg.get("earth_size_max_radius", 1.5)),
-        include_candidates_as_positive=bool(dataset_cfg.get("include_candidates_as_positive", False)),
-        mast_search_timeout_seconds=dataset_cfg.get("mast_search_timeout_seconds"),
-        mast_download_timeout_seconds=dataset_cfg.get("mast_download_timeout_seconds"),
+            max_real_targets=(args.max_real_targets if args.max_real_targets is not None else dataset_cfg.get("max_real_targets")),
     )
 
     # ----------------------- Stage 3: baseline models -------------------------
@@ -134,6 +149,11 @@ def main() -> None:
         earth_size_max_radius=float(dataset_cfg.get("earth_size_max_radius", 1.5)),
         threshold_metric=cnn_cfg.get("threshold_metric", "balanced_accuracy"),
         tracker=tracker,
+        model_mode=str(cnn_cfg.get("model_mode", "auto")),
+        use_odd_even_branch=bool(cnn_cfg.get("use_odd_even_branch", True)),
+        use_secondary_branch=bool(cnn_cfg.get("use_secondary_branch", True)),
+        disable_aux_features=bool(cnn_cfg.get("disable_aux_features", False)),
+        fusion_hidden_dim=int(cnn_cfg.get("fusion_hidden_dim", 96)),
     )
 
     # --------------------------- Stage 5: summary -----------------------------
