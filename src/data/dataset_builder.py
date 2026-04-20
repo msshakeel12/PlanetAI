@@ -253,6 +253,8 @@ def build_real_dataset(
     epoch_column: str,
     mast_cache_dir: Path,
     max_targets: int | None,
+    mast_search_timeout_seconds: float | None = None,
+    mast_download_timeout_seconds: float | None = None,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """Build dataset from real Kepler light curves fetched from MAST.
 
@@ -267,6 +269,8 @@ def build_real_dataset(
         epoch_column: Metadata transit epoch column.
         mast_cache_dir: Local cache for downloaded MAST files.
         max_targets: Optional cap on number of rows processed.
+        mast_search_timeout_seconds: Optional timeout for MAST search stage.
+        mast_download_timeout_seconds: Optional timeout for MAST download stage.
 
     Returns:
         Tuple ``(times, fluxes, labels, groups)`` for successfully ingested targets.
@@ -284,19 +288,30 @@ def build_real_dataset(
     fluxes_out: list[np.ndarray] = []
     labels_out: list[int] = []
     groups_out: list[int] = []
+    skipped_missing_kepid = 0
+    skipped_errors = 0
 
     # Cap processing to support bounded-cost smoke runs against remote services.
     cap = len(metadata) if max_targets is None else min(len(metadata), max_targets)
 
     for idx in range(cap):
+        progress = f"[{idx + 1}/{cap}]"
         row = metadata.iloc[idx]
         kepid_raw = row.get("kepid")
         if pd.isna(kepid_raw):
+            skipped_missing_kepid += 1
+            print(f"{progress} SKIP missing KEPID")
             continue
 
         try:
             kepid = int(kepid_raw)
-            lc = download_kepler_light_curve(kepid=kepid, download_dir=mast_cache_dir)
+            print(f"{progress} Fetching KIC {kepid}...")
+            lc = download_kepler_light_curve(
+                kepid=kepid,
+                download_dir=mast_cache_dir,
+                search_timeout_seconds=mast_search_timeout_seconds,
+                download_timeout_seconds=mast_download_timeout_seconds,
+            )
 
             proc_time, proc_flux = preprocess_light_curve(
                 time=lc.time,
@@ -321,8 +336,16 @@ def build_real_dataset(
             fluxes_out.append(proc_flux)
             labels_out.append(int(labels[idx]))
             groups_out.append(kepid)
+            print(f"{progress} OK KIC {kepid} ({proc_flux.size} points)")
         except Exception as exc:
-            print(f"Skipping KIC {kepid_raw} due to ingestion error: {exc}")
+            skipped_errors += 1
+            print(f"{progress} SKIP KIC {kepid_raw}: {exc}")
+
+    print(
+        "Real ingestion summary: "
+        f"processed={cap}, succeeded={len(labels_out)}, "
+        f"skipped_missing_kepid={skipped_missing_kepid}, skipped_errors={skipped_errors}"
+    )
 
     if not labels_out:
         raise RuntimeError(
@@ -387,6 +410,8 @@ def run_dataset_build(
     task_mode: str = "disposition_binary",
     earth_size_max_radius: float = 1.5,
     include_candidates_as_positive: bool = False,
+    mast_search_timeout_seconds: float | None = None,
+    mast_download_timeout_seconds: float | None = None,
 ) -> tuple[Path, Path]:
     """Build feature and sequence artifacts from metadata.
 
@@ -409,6 +434,8 @@ def run_dataset_build(
         epoch_column: Metadata epoch column for phase fold.
         mast_cache_dir: MAST cache directory for real mode.
         max_real_targets: Optional ingestion cap in real mode.
+        mast_search_timeout_seconds: Optional timeout for MAST search stage.
+        mast_download_timeout_seconds: Optional timeout for MAST download stage.
 
     Returns:
         Tuple containing paths to the saved feature CSV and sequence NPZ.
@@ -453,6 +480,8 @@ def run_dataset_build(
             epoch_column=epoch_column,
             mast_cache_dir=mast_cache_dir,
             max_targets=max_real_targets,
+            mast_search_timeout_seconds=mast_search_timeout_seconds,
+            mast_download_timeout_seconds=mast_download_timeout_seconds,
         )
     elif mode == "real_stub":
         times, fluxes, labels_out, groups_out = build_real_stub_dataset(
@@ -569,6 +598,18 @@ def build_parser() -> argparse.ArgumentParser:
         help="Optional cap on number of metadata rows ingested in real mode.",
     )
     parser.add_argument(
+        "--mast-search-timeout-seconds",
+        type=float,
+        default=None,
+        help="Optional timeout (seconds) for MAST search requests per KIC in real mode.",
+    )
+    parser.add_argument(
+        "--mast-download-timeout-seconds",
+        type=float,
+        default=None,
+        help="Optional timeout (seconds) for MAST download/stitch per KIC in real mode.",
+    )
+    parser.add_argument(
         "--random-seed",
         type=int,
         default=42,
@@ -615,6 +656,8 @@ def main() -> None:
         epoch_column=args.epoch_column,
         mast_cache_dir=args.mast_cache_dir,
         max_real_targets=args.max_real_targets,
+        mast_search_timeout_seconds=args.mast_search_timeout_seconds,
+        mast_download_timeout_seconds=args.mast_download_timeout_seconds,
     )
     print(f"Saved feature table to {features_path}")
     print(f"Saved sequence arrays to {sequences_path}")

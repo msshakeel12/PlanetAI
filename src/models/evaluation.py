@@ -120,6 +120,7 @@ def find_best_threshold(
     summary: list[dict[str, float]] = []
     best_threshold = 0.5
     best_metric_value = float("-inf")
+    found_finite = False
 
     for threshold in thresholds:
         metrics = compute_classification_metrics(y_true=y_true, y_prob=y_prob, threshold=float(threshold))
@@ -132,9 +133,14 @@ def find_best_threshold(
                 "metric_value": metric_value,
             }
         )
-        if metric_value > best_metric_value:
+        if np.isfinite(metric_value) and metric_value > best_metric_value:
+            found_finite = True
             best_metric_value = metric_value
             best_threshold = float(threshold)
+
+    if not found_finite:
+        best_metric_value = float("nan")
+        best_threshold = 0.5
 
     return {
         "best_threshold": best_threshold,

@@ -11,10 +11,15 @@ Main public functions/classes:
 
 from __future__ import annotations
 
+import signal
+import threading
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Callable, TypeVar
 
 import numpy as np
+
+T = TypeVar("T")
 
 
 @dataclass
@@ -51,11 +56,57 @@ def _import_lightkurve() -> object:
     return lk
 
 
+def _run_with_optional_timeout(
+    fn: Callable[[], T],
+    timeout_seconds: float | None,
+    stage_name: str,
+) -> T:
+    """Run a callable with an optional wall-clock timeout.
+
+    Args:
+        fn: Zero-argument callable to execute.
+        timeout_seconds: Optional timeout budget in seconds.
+        stage_name: Human-readable stage label for error messages.
+
+    Returns:
+        Result returned by ``fn``.
+
+    Raises:
+        TimeoutError: If execution exceeds ``timeout_seconds``.
+
+    Notes:
+        Timeout enforcement uses ``SIGALRM`` when available and when running on
+        the main thread. In other contexts, timeout values are accepted but not
+        enforced to preserve compatibility across platforms/runtimes.
+    """
+    if timeout_seconds is None or timeout_seconds <= 0:
+        return fn()
+
+    supports_alarm = hasattr(signal, "SIGALRM") and hasattr(signal, "setitimer")
+    if not supports_alarm or threading.current_thread() is not threading.main_thread():
+        return fn()
+
+    previous_handler = signal.getsignal(signal.SIGALRM)
+
+    def _timeout_handler(_signum: int, _frame: object) -> None:
+        raise TimeoutError(f"{stage_name} timed out after {float(timeout_seconds):.1f}s")
+
+    signal.signal(signal.SIGALRM, _timeout_handler)
+    signal.setitimer(signal.ITIMER_REAL, float(timeout_seconds))
+    try:
+        return fn()
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, 0.0)
+        signal.signal(signal.SIGALRM, previous_handler)
+
+
 def download_kepler_light_curve(
     kepid: int,
     download_dir: Path,
     mission: str = "Kepler",
     cadence: str = "long",
+    search_timeout_seconds: float | None = None,
+    download_timeout_seconds: float | None = None,
 ) -> KeplerLightCurve:
     """Download and stitch Kepler light curves for one KIC target.
 
@@ -64,6 +115,9 @@ def download_kepler_light_curve(
         download_dir: Local directory for cached products.
         mission: Mission name passed to Lightkurve search.
         cadence: Cadence type (for example, ``long`` or ``short``).
+        search_timeout_seconds: Optional timeout budget for MAST search.
+        download_timeout_seconds: Optional timeout budget for MAST download and
+            stitch operations.
 
     Returns:
         ``KeplerLightCurve`` containing cleaned time/flux arrays.
@@ -80,16 +134,28 @@ def download_kepler_light_curve(
     lk = _import_lightkurve()
 
     target = f"KIC {int(kepid)}"
-    search_result = lk.search_lightcurve(target, mission=mission, cadence=cadence)
+    search_result = _run_with_optional_timeout(
+        lambda: lk.search_lightcurve(target, mission=mission, cadence=cadence),
+        timeout_seconds=search_timeout_seconds,
+        stage_name=f"MAST search for {target}",
+    )
     if len(search_result) == 0:
         raise ValueError(f"No light curves found in MAST for {target}")
 
     download_dir.mkdir(parents=True, exist_ok=True)
-    collection = search_result.download_all(download_dir=str(download_dir))
+    collection = _run_with_optional_timeout(
+        lambda: search_result.download_all(download_dir=str(download_dir)),
+        timeout_seconds=download_timeout_seconds,
+        stage_name=f"MAST download for {target}",
+    )
     if collection is None or len(collection) == 0:
         raise ValueError(f"Failed to download light curves for {target}")
 
-    stitched = collection.stitch().remove_nans()
+    stitched = _run_with_optional_timeout(
+        lambda: collection.stitch().remove_nans(),
+        timeout_seconds=download_timeout_seconds,
+        stage_name=f"MAST stitch for {target}",
+    )
     # Robust cleaning to reduce obvious outliers before shared preprocessing.
     stitched = stitched.remove_outliers(sigma=7)
 

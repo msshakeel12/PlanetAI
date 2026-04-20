@@ -96,6 +96,8 @@ def main() -> None:
         task_mode=dataset_cfg.get("task_mode", "disposition_binary"),
         earth_size_max_radius=float(dataset_cfg.get("earth_size_max_radius", 1.5)),
         include_candidates_as_positive=bool(dataset_cfg.get("include_candidates_as_positive", False)),
+        mast_search_timeout_seconds=dataset_cfg.get("mast_search_timeout_seconds"),
+        mast_download_timeout_seconds=dataset_cfg.get("mast_download_timeout_seconds"),
     )
 
     # ----------------------- Stage 3: baseline models -------------------------

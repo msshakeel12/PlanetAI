@@ -21,6 +21,8 @@ dataset:
   epoch_column: koi_time0bk
   mast_cache_dir: data/raw/mast_cache
   max_real_targets: null
+  mast_search_timeout_seconds: null
+  mast_download_timeout_seconds: null
   random_seed: 42
   features_output: data/processed/features.csv
   sequences_output: data/processed/sequences.npz
