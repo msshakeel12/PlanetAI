@@ -1,0 +1,50 @@
+{
+  "artifacts": {
+    "metrics": "data/processed/models_real_eval/random_forest_metrics.json",
+    "model": "data/processed/models_real_eval/random_forest.joblib"
+  },
+  "metrics": {
+    "accuracy": 0.9016949152542373,
+    "average_precision": 0.09757585242853703,
+    "balanced_accuracy": 0.5,
+    "confusion_matrix": [
+      [
+        266,
+        0
+      ],
+      [
+        29,
+        0
+      ]
+    ],
+    "confusionmatrix": [
+      [
+        266,
+        0
+      ],
+      [
+        29,
+        0
+      ]
+    ],
+    "f1_score": 0.0,
+    "f1score": 0.0,
+    "precision": 0.0,
+    "recall": 0.0,
+    "roc_auc": 0.4212470832253047,
+    "rocauc": 0.4212470832253047,
+    "specificity": 1.0,
+    "support_negative": 266,
+    "support_positive": 29
+  },
+  "params": {
+    "random_seed": 42,
+    "test_size": 0.2,
+    "tune": false,
+    "tune_cv_folds": 3,
+    "tune_iterations": 8
+  },
+  "run_id": "baseline_random_forest_20260421T120211Z",
+  "stage": "baseline_random_forest",
+  "timestamp_utc": "20260421T120211Z"
+}
