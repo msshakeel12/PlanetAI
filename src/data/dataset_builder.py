@@ -418,6 +418,7 @@ def _build_multiview_arrays(
         row = metadata.iloc[idx]
         period = _safe_numeric_value(row, period_column, fallback=0.0)
         epoch = _safe_numeric_value(row, epoch_column, fallback=0.0)
+        duration_hours = _safe_numeric_value(row, "koi_duration", fallback=0.0)
         global_view = build_global_view(
             time=times[idx],
             flux=fluxes[idx],
@@ -431,6 +432,7 @@ def _build_multiview_arrays(
             period=period,
             epoch=epoch,
             target_length=local_view_length,
+            duration_hours=duration_hours,
         )
         aux = build_aux_features(row)
 
@@ -441,6 +443,7 @@ def _build_multiview_arrays(
                 period=period,
                 epoch=epoch,
                 target_length=odd_even_view_length,
+                duration_hours=duration_hours,
             )
             odd_even_views.append(np.nan_to_num(odd_even, nan=0.0, posinf=0.0, neginf=0.0).astype(np.float32))
 
@@ -451,6 +454,7 @@ def _build_multiview_arrays(
                 period=period,
                 epoch=epoch,
                 target_length=secondary_view_length,
+                duration_hours=duration_hours,
             )
             secondary_views.append(np.nan_to_num(secondary, nan=0.0, posinf=0.0, neginf=0.0).astype(np.float32))
 

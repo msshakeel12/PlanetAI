@@ -26,6 +26,21 @@ from src.utils.paths import (
 from src.utils.experiment_tracking import ExperimentTracker
 
 
+def _parse_optional_timeout_seconds(value: object) -> float | None:
+    """Parse optional timeout seconds from int/float or strings like '90s'."""
+    if value is None:
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+
+    text = str(value).strip().lower()
+    if not text:
+        return None
+    if text.endswith("s"):
+        text = text[:-1].strip()
+    return float(text)
+
+
 def build_parser() -> argparse.ArgumentParser:
     """Build CLI parser for full-pipeline orchestration.
 
@@ -99,6 +114,9 @@ def main() -> None:
         mode=dataset_cfg.get("mode", "synthetic"),
         label_column=dataset_cfg.get("label_column", "koi_disposition"),
         positive_labels=dataset_cfg.get("positive_labels", ["CONFIRMED", "CANDIDATE"]),
+        task_mode=dataset_cfg.get("task_mode", "disposition_binary"),
+        earth_size_max_radius=float(dataset_cfg.get("earth_size_max_radius", 1.5)),
+        include_candidates_as_positive=bool(dataset_cfg.get("include_candidates_as_positive", False)),
         sequence_length=int(dataset_cfg.get("sequence_length", 512)),
         random_seed=int(dataset_cfg.get("random_seed", 42)),
         smooth_window=dataset_cfg.get("smooth_window"),
@@ -112,7 +130,9 @@ def main() -> None:
         enable_odd_even_view=bool(dataset_cfg.get("enable_odd_even_view", True)),
         enable_secondary_view=bool(dataset_cfg.get("enable_secondary_view", True)),
         mast_cache_dir=Path(dataset_cfg.get("mast_cache_dir", RAW_DATA_DIR / "mast_cache")),
-            max_real_targets=(args.max_real_targets if args.max_real_targets is not None else dataset_cfg.get("max_real_targets")),
+        max_real_targets=(args.max_real_targets if args.max_real_targets is not None else dataset_cfg.get("max_real_targets")),
+            mast_search_timeout_seconds=_parse_optional_timeout_seconds(dataset_cfg.get("mast_search_timeout_seconds")),
+            mast_download_timeout_seconds=_parse_optional_timeout_seconds(dataset_cfg.get("mast_download_timeout_seconds")),
     )
 
     # ----------------------- Stage 3: baseline models -------------------------

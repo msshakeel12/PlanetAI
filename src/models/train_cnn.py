@@ -473,6 +473,32 @@ def _normalize_aux_features(
     return train_norm.astype(np.float32), other_norm.astype(np.float32), mean.astype(np.float32), std.astype(np.float32)
 
 
+def _assess_odd_even_quality(odd_even_views: np.ndarray) -> dict[str, float | bool]:
+    """Assess odd/even branch informativeness from channel divergence."""
+    arr = np.asarray(odd_even_views, dtype=np.float32)
+    if arr.ndim != 3 or arr.shape[1] != 2 or arr.shape[2] < 2:
+        return {
+            "median_abs_channel_diff": 0.0,
+            "mean_abs_channel_diff": 0.0,
+            "informative_fraction": 0.0,
+            "disable_recommended": True,
+        }
+
+    per_sample_diff = np.mean(np.abs(arr[:, 0, :] - arr[:, 1, :]), axis=1)
+    median_diff = float(np.median(per_sample_diff))
+    mean_diff = float(np.mean(per_sample_diff))
+    informative_fraction = float(np.mean(per_sample_diff >= 0.01))
+
+    # Degenerate odd/even views are usually fallback duplicates and tend to hurt.
+    disable_recommended = bool((median_diff < 0.003) or (informative_fraction < 0.15))
+    return {
+        "median_abs_channel_diff": median_diff,
+        "mean_abs_channel_diff": mean_diff,
+        "informative_fraction": informative_fraction,
+        "disable_recommended": disable_recommended,
+    }
+
+
 def run_cnn_training(
     sequences_path: Path,
     output_dir: Path,
@@ -536,6 +562,7 @@ def run_cnn_training(
 
     aux_mean: np.ndarray | None = None
     aux_std: np.ndarray | None = None
+    odd_even_quality: dict[str, float | bool] | None = None
 
     if effective_mode == "multiview":
         global_views = np.nan_to_num(payload["global_views"].astype(np.float32), nan=0.0, posinf=0.0, neginf=0.0)
@@ -575,6 +602,19 @@ def run_cnn_training(
             odd_even_train = odd_even[train_idx]
             odd_even_val = odd_even[val_idx]
             odd_even_test = odd_even[test_idx]
+            odd_even_quality = _assess_odd_even_quality(odd_even_train)
+            if bool(odd_even_quality["disable_recommended"]):
+                warnings.warn(
+                    "Strong warning: odd/even views look degenerate on train split; disabling odd/even branch "
+                    f"(median_abs_diff={odd_even_quality['median_abs_channel_diff']:.6f}, "
+                    f"informative_fraction={odd_even_quality['informative_fraction']:.3f}).",
+                    RuntimeWarning,
+                    stacklevel=2,
+                )
+                use_odd_even_effective = False
+                odd_even_train = None
+                odd_even_val = None
+                odd_even_test = None
 
         secondary_train: np.ndarray | None = None
         secondary_val: np.ndarray | None = None
@@ -737,6 +777,13 @@ def run_cnn_training(
         "aux_enabled": bool(use_aux_features_effective) if effective_mode == "multiview" else False,
         "fusion_hidden_dim": int(fusion_hidden_dim),
     }
+    if odd_even_quality is not None:
+        metrics["odd_even_quality"] = {
+            "median_abs_channel_diff": float(odd_even_quality["median_abs_channel_diff"]),
+            "mean_abs_channel_diff": float(odd_even_quality["mean_abs_channel_diff"]),
+            "informative_fraction": float(odd_even_quality["informative_fraction"]),
+            "disable_recommended": bool(odd_even_quality["disable_recommended"]),
+        }
     if aux_mean is not None and aux_std is not None:
         metrics["aux_norm"] = {
             "mean": aux_mean.tolist(),

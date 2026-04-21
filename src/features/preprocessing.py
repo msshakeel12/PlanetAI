@@ -162,20 +162,57 @@ def build_global_view(
     return _sanitize_numeric_array(global_flux, fallback=0.0).astype(np.float32)
 
 
+def _resolve_phase_half_width(
+    period_days: float,
+    duration_hours: float | None,
+    requested_half_width: float | None,
+    default_half_width: float = 0.1,
+    min_half_width: float = 0.03,
+    max_half_width: float = 0.25,
+    duration_scale: float = 2.5,
+) -> float:
+    """Resolve phase half-width using an optional duration-aware heuristic.
+
+    The fallback remains ``default_half_width`` when duration/period metadata is
+    missing or invalid, preserving legacy behavior.
+    """
+    if requested_half_width is not None:
+        width = float(requested_half_width)
+        if 0.0 < width <= 0.5:
+            return width
+
+    period_f = float(period_days) if np.isfinite(period_days) else 0.0
+    duration_f = float(duration_hours) if duration_hours is not None and np.isfinite(duration_hours) else 0.0
+    if period_f <= 0.0 or duration_f <= 0.0:
+        return float(default_half_width)
+
+    duration_days = duration_f / 24.0
+    phase_duration = duration_days / period_f
+    if not np.isfinite(phase_duration) or phase_duration <= 0.0:
+        return float(default_half_width)
+
+    half_width = 0.5 * float(duration_scale) * float(phase_duration)
+    half_width = float(np.clip(half_width, min_half_width, max_half_width))
+    return half_width
+
+
 def build_local_view(
     time: np.ndarray,
     flux: np.ndarray,
     period: float,
     epoch: float,
     target_length: int,
-    window_half_width: float = 0.1,
+    window_half_width: float | None = None,
+    duration_hours: float | None = None,
 ) -> np.ndarray:
     """Build a fixed-length local transit-centered phase view."""
     phase, folded_flux = safe_phase_fold(time=time, flux=flux, period=period, epoch=epoch)
 
-    half_width = float(window_half_width)
-    if half_width <= 0.0 or half_width > 0.5:
-        half_width = 0.1
+    half_width = _resolve_phase_half_width(
+        period_days=period,
+        duration_hours=duration_hours,
+        requested_half_width=window_half_width,
+    )
     local_mask = np.abs(phase) <= half_width
     if int(np.sum(local_mask)) < 2:
         local_phase = phase
@@ -224,7 +261,8 @@ def build_odd_even_view(
     period: float,
     epoch: float,
     target_length: int,
-    window_half_width: float = 0.1,
+    window_half_width: float | None = None,
+    duration_hours: float | None = None,
 ) -> np.ndarray:
     """Build a 2-channel odd/even transit diagnostic view.
 
@@ -244,10 +282,17 @@ def build_odd_even_view(
             period=period,
             epoch=epoch,
             target_length=target_length,
+            window_half_width=window_half_width,
+            duration_hours=duration_hours,
         )
         return np.stack([local, local], axis=0).astype(np.float32)
 
     def _build_branch(mask: np.ndarray | None = None) -> np.ndarray:
+        half_width = _resolve_phase_half_width(
+            period_days=period,
+            duration_hours=duration_hours,
+            requested_half_width=window_half_width,
+        )
         if mask is not None and int(np.sum(mask)) >= 2:
             phase_branch, flux_branch = safe_phase_fold(
                 time=np.asarray(time)[mask],
@@ -261,14 +306,14 @@ def build_odd_even_view(
             phase=phase_branch,
             flux=flux_branch,
             center_phase=0.0,
-            half_width=window_half_width,
+            half_width=half_width,
         )
         _, view = safe_fixed_length_view(
             x=delta,
             y=flux_window,
             target_length=target_length,
-            x_min=-abs(float(window_half_width)),
-            x_max=abs(float(window_half_width)),
+            x_min=-half_width,
+            x_max=half_width,
             fallback_value=0.0,
         )
         return _sanitize_numeric_array(view, fallback=0.0).astype(np.float32)
@@ -304,7 +349,8 @@ def build_secondary_view(
     period: float,
     epoch: float,
     target_length: int,
-    window_half_width: float = 0.1,
+    window_half_width: float | None = None,
+    duration_hours: float | None = None,
 ) -> np.ndarray:
     """Build a fixed-length phase view centered near secondary eclipse (phase 0.5).
 
@@ -317,15 +363,17 @@ def build_secondary_view(
     - ``print(np.isfinite(build_secondary_view(t, f, 0.0, 0.0, 128)).all())``
     """
     phase, folded_flux = safe_phase_fold(time=time, flux=flux, period=period, epoch=epoch)
+    width = _resolve_phase_half_width(
+        period_days=period,
+        duration_hours=duration_hours,
+        requested_half_width=window_half_width,
+    )
     delta, flux_window = _select_phase_window(
         phase=phase,
         flux=folded_flux,
         center_phase=0.5,
-        half_width=window_half_width,
+        half_width=width,
     )
-    width = abs(float(window_half_width))
-    if width <= 0.0 or width > 0.5:
-        width = 0.1
 
     if delta.size < 2 or flux_window.size < 2:
         phase01 = (phase + 0.5) % 1.0
